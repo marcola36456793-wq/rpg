@@ -84,8 +84,16 @@ namespace AuthServer.Controllers
             if (!validRaces.Contains(request.Race))
                 return BadRequest(new { message = "Raça inválida. Escolha: Humano, Elfo ou Orc" });
 
+            // CORREÇÃO: Aceitar tanto Class quanto CharacterClass
+            string characterClass = !string.IsNullOrEmpty(request.Class) 
+                ? request.Class 
+                : request.CharacterClass;
+
+            if (string.IsNullOrEmpty(characterClass))
+                return BadRequest(new { message = "Classe é obrigatória" });
+
             var validClasses = new[] { "Guerreiro", "Mago", "Arqueiro" };
-            if (!validClasses.Contains(request.Class))
+            if (!validClasses.Contains(characterClass))
                 return BadRequest(new { message = "Classe inválida. Escolha: Guerreiro, Mago ou Arqueiro" });
 
             // Verificar se já existe personagem com esse nome (global)
@@ -103,7 +111,7 @@ namespace AuthServer.Controllers
                 UserId = userId.Value,
                 Name = request.Name,
                 Race = request.Race,
-                Class = request.Class,
+                Class = characterClass,
                 PositionX = 0f,
                 PositionY = 0f,
                 PositionZ = 0f,
@@ -184,6 +192,7 @@ namespace AuthServer.Controllers
         public string Name { get; set; } = string.Empty;
         public string Race { get; set; } = string.Empty;
         public string Class { get; set; } = string.Empty;
+        public string CharacterClass { get; set; } = string.Empty; // Aceitar ambos
     }
 
     public class UpdatePositionRequest

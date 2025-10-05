@@ -5,12 +5,10 @@ using System.Collections;
 
 namespace MMO
 {
-    /// <summary>
-    /// Gerencia a conexão com o servidor de jogo ao entrar na cena World
-    /// </summary>
     public class WorldConnectionManager : MonoBehaviour
     {
         [Header("Network Settings")]
+        [SerializeField] private bool autoStartAsHost = true; // NOVO: para testes locais
         [SerializeField] private string serverAddress = "localhost";
         [SerializeField] private ushort serverPort = 7777;
 
@@ -31,8 +29,40 @@ namespace MMO
                 return;
             }
 
-            // Conectar automaticamente ao servidor
-            StartCoroutine(ConnectToServer());
+            // Se auto-start como host está ativado, iniciar como servidor+cliente
+            if (autoStartAsHost && !NetworkServer.active && !NetworkClient.isConnected)
+            {
+                Debug.Log("Iniciando como HOST (servidor + cliente)...");
+                StartCoroutine(StartAsHost());
+            }
+            else
+            {
+                // Conectar como cliente normal
+                StartCoroutine(ConnectToServer());
+            }
+        }
+
+        private IEnumerator StartAsHost()
+        {
+            UpdateStatus("Iniciando servidor local...");
+            
+            // Iniciar como host (servidor + cliente)
+            networkManager.StartHost();
+            
+            yield return new WaitForSeconds(0.5f);
+
+            if (NetworkServer.active && NetworkClient.isConnected)
+            {
+                UpdateStatus("Servidor ativo! Autenticando...");
+                yield return new WaitForSeconds(0.5f);
+                SendAuthenticationRequest();
+            }
+            else
+            {
+                UpdateStatus("Erro ao iniciar servidor!");
+                yield return new WaitForSeconds(2f);
+                ReturnToCharacterSelect();
+            }
         }
 
         private IEnumerator ConnectToServer()
@@ -42,13 +72,9 @@ namespace MMO
 
             UpdateStatus("Conectando ao servidor...");
 
-            // Configurar endereço do servidor
             networkManager.networkAddress = serverAddress;
-
-            // Tentar conectar
             networkManager.StartClient();
 
-            // Aguardar conexão (timeout de 10 segundos)
             float timeout = 10f;
             float elapsed = 0f;
 
@@ -62,16 +88,12 @@ namespace MMO
             {
                 UpdateStatus("Conectado! Autenticando...");
                 yield return new WaitForSeconds(0.5f);
-
-                // Enviar requisição de autenticação
                 SendAuthenticationRequest();
             }
             else
             {
                 UpdateStatus("Falha ao conectar ao servidor!");
                 Debug.LogError("Timeout ao conectar ao servidor");
-                
-                // TODO: Mostrar UI de erro e opção de reconectar
                 yield return new WaitForSeconds(3f);
                 ReturnToCharacterSelect();
             }
@@ -79,32 +101,38 @@ namespace MMO
             isConnecting = false;
         }
 
-        private void SendAuthenticationRequest()
-        {
-            string token = GameState.Instance.GetAuthToken();
-            int characterId = GameState.Instance.GetSelectedCharacterId();
+private void SendAuthenticationRequest()
+{
+    string token = GameState.Instance.GetAuthToken();
+    int characterId = GameState.Instance.GetSelectedCharacterId();
 
-            if (string.IsNullOrEmpty(token) || characterId == 0)
-            {
-                Debug.LogError("Token ou characterId inválido!");
-                UpdateStatus("Erro de autenticação!");
-                ReturnToCharacterSelect();
-                return;
-            }
+    // DEBUG: Mostrar dados completos
+    Debug.Log($"=== DADOS DE AUTENTICAÇÃO ===");
+    Debug.Log($"Token: {token}");
+    Debug.Log($"Character ID: {characterId}");
+    Debug.Log($"Token Length: {token?.Length ?? 0}");
+    Debug.Log($"=============================");
 
-            // Enviar mensagem de autenticação para o servidor
-            var authRequest = new AuthenticationRequest
-            {
-                token = token,
-                characterId = characterId
-            };
+    if (string.IsNullOrEmpty(token) || characterId == 0)
+    {
+        Debug.LogError("Token ou characterId inválido!");
+        UpdateStatus("Erro de autenticação!");
+        ReturnToCharacterSelect();
+        return;
+    }
 
-            NetworkClient.Send(authRequest);
-            UpdateStatus("Aguardando resposta do servidor...");
+    var authRequest = new AuthenticationRequest
+    {
+        token = token,
+        characterId = characterId
+    };
 
-            // Aguardar resposta (será tratada pelo MMO_NetworkManager)
-            StartCoroutine(WaitForAuthentication());
-        }
+    NetworkClient.Send(authRequest);
+    UpdateStatus("Aguardando resposta...");
+
+    StartCoroutine(WaitForAuthentication());
+}
+
 
         private IEnumerator WaitForAuthentication()
         {
@@ -122,7 +150,6 @@ namespace MMO
                 UpdateStatus("Autenticado! Entrando no mundo...");
                 yield return new WaitForSeconds(1f);
 
-                // Esconder painel de conexão
                 if (connectingPanel != null)
                     connectingPanel.SetActive(false);
             }
@@ -146,17 +173,17 @@ namespace MMO
 
         private void ReturnToCharacterSelect()
         {
-            // Desconectar do servidor
             if (NetworkClient.isConnected)
                 networkManager.StopClient();
+                
+            if (NetworkServer.active)
+                networkManager.StopHost();
 
-            // Voltar para seleção de personagem
             UnityEngine.SceneManagement.SceneManager.LoadScene("01_CharacterSelect");
         }
 
         private void OnDestroy()
         {
-            // Cleanup ao sair da cena
             StopAllCoroutines();
         }
     }

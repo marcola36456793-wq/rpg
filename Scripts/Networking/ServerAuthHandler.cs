@@ -15,16 +15,15 @@ namespace MMO.Networking
             int characterId, 
             Action<bool, CharacterData> callback)
         {
-            // Primeiro validar o token
             yield return ValidateToken(token, (tokenValid, userId) =>
             {
                 if (!tokenValid)
                 {
+                    Debug.LogError("Token validation failed");
                     callback(false, null);
                     return;
                 }
 
-                // Se token válido, buscar dados do personagem
                 CoroutineRunner.Instance.StartCoroutine(
                     GetCharacterData(token, characterId, (success, characterData) =>
                     {
@@ -38,11 +37,16 @@ namespace MMO.Networking
         {
             string url = $"{API_URL}/auth/validate";
             
-            var request = new UnityWebRequest(url, "POST");
+            Debug.Log($"Validando token em: {url}");
             
-            string jsonBody = JsonUtility.ToJson(new { token = token });
+            // CORREÇÃO: Criar objeto com a propriedade correta "Token" (maiúscula)
+            string jsonBody = $"{{\"Token\":\"{token}\"}}";
+            
+            Debug.Log($"JSON Body: {jsonBody}");
+            
             byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonBody);
             
+            var request = new UnityWebRequest(url, "POST");
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
@@ -53,6 +57,8 @@ namespace MMO.Networking
             {
                 try
                 {
+                    Debug.Log($"Resposta do servidor: {request.downloadHandler.text}");
+                    
                     var response = JsonUtility.FromJson<ValidateTokenResponse>(request.downloadHandler.text);
                     if (response.valid)
                     {
@@ -64,11 +70,14 @@ namespace MMO.Networking
                 catch (Exception e)
                 {
                     Debug.LogError($"Erro ao parsear resposta de validação: {e.Message}");
+                    Debug.LogError($"Response text: {request.downloadHandler.text}");
                 }
             }
             else
             {
                 Debug.LogError($"Erro ao validar token: {request.error}");
+                Debug.LogError($"Response Code: {request.responseCode}");
+                Debug.LogError($"Response: {request.downloadHandler.text}");
             }
 
             callback(false, 0);
@@ -87,6 +96,7 @@ namespace MMO.Networking
             {
                 try
                 {
+                    Debug.Log($"Character data response: {request.downloadHandler.text}");
                     var characterData = JsonUtility.FromJson<CharacterData>(request.downloadHandler.text);
                     Debug.Log($"Dados do personagem carregados: {characterData.name}");
                     callback(true, characterData);
@@ -114,7 +124,6 @@ namespace MMO.Networking
         }
     }
 
-    // MonoBehaviour helper para rodar coroutines em contexto estático
     public class CoroutineRunner : MonoBehaviour
     {
         private static CoroutineRunner _instance;
@@ -132,4 +141,4 @@ namespace MMO.Networking
             }
         }
     }
-} 
+}
